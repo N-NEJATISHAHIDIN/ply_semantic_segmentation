@@ -46,5 +46,5 @@ visualize -->
 My command is: 
 
 ```sh
-python segment_pointcloud_clean.py './project_neigborhood/odm_filterpoints/point_cloud.ply' './project_neigborhood/opensfm/reconstruction.json' './segmentations' './project_neigborhood' ./output_ply 
+python segment_pointcloud_clean.py ./project_neigborhood/odm_filterpoints/point_cloud.ply ./project_neigborhood/opensfm/reconstruction.json ./segmentations ./project_neigborhood ./output_ply 
 ```
