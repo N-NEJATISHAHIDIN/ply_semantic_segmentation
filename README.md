@@ -42,7 +42,7 @@ path_to_2D_segmentations\
 path_to_ODM_output\
 path_to_output\ # give name of a folder which you want the output saved to 
 visualize -->
-```
+<!-- ``` -->
 My command is: 
 
 ```sh
