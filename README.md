@@ -15,11 +15,10 @@ This script performs semantic segmentation on the output point cloud from OpenDr
 This project uses two main, first the semanticly segmented image, then the output directory of opendrownmap (ODM), please download the following datas.
 
 1. **2D Semantic Segmentations**
-   - Path: `https://drive.google.com/file/d/1xQtwe3Y7CgeFi2kQhLUNp_GfbGL8OXfu/view?usp=sharing`
+   - [Path](https://drive.google.com/file/d/1xQtwe3Y7CgeFi2kQhLUNp_GfbGL8OXfu/view?usp=sharing)
    - Semantic segmentations of the RGB images of the neighborhood data.
 
 2. **ODM output**
-   - Path: `/path/to/dataset2`
    - the ODM output for neighborhood data.
 
 ## Run the semantic segmentation on the pointcloud 
