@@ -1,4 +1,4 @@
-import argparse
+# python segment_pointcloud_clean.py '/home/negar/secondssd/opendronemap/datasets/project_2/odm_filterpoints/point_cloud.ply' '/home/negar/secondssd/opendronemap/datasets/project_2/opensfm/reconstruction.json' '/home/negar/secondssd/opendronemap/datasets/project/segmentations' '/home/negar/secondssd/opendronemap/datasets/project_2'  ./menasses_2import argparse
 import open3d as o3d
 import pandas as pd
 import sys
@@ -230,7 +230,7 @@ def read_camera(path_to_cameras, ply_file_path, output_path, path_to_project, pa
     ordered_filenames = extract_filenames(nvm_filepath)
 
     point_cloud = o3d.io.read_point_cloud(ply_file_path) 
-    downsampled_point_cloud = point_cloud.voxel_down_sample(voxel_size=0.2)  # Adjust voxel size and downsample the points
+    downsampled_point_cloud = point_cloud.voxel_down_sample(voxel_size=2.5)  # Adjust voxel size and downsample the points
     points = np.asarray(downsampled_point_cloud.points)
     o3d.visualization.draw_geometries([downsampled_point_cloud])
 
@@ -253,7 +253,7 @@ def read_camera(path_to_cameras, ply_file_path, output_path, path_to_project, pa
     for i,img_name in tqdm(enumerate(sorted(images))):
 
         # reduce number of images
-        if i%2==1:
+        if i%3!=1:
             continue
 
         # Load the image
@@ -263,8 +263,11 @@ def read_camera(path_to_cameras, ply_file_path, output_path, path_to_project, pa
         # RGB image
         image_rgb =  cv2.cvtColor(cv2.imread("{}/images/{}".format(path_to_project, img_name)),cv2.COLOR_BGR2RGB)  # Replace "your_image_path.jpg" with the path to your image file
         # depth image
-        image_depth = read_depth("{}/opensfm/undistorted/openmvs/depthmaps/depth{:04d}.dmap".format(path_to_project, ordered_filenames.index('images/{}'.format(img_name))))  # Replace "your_image_path.jpg" with the path to your image file
-        resized_image = image_depth.resize((image_rgb.shape[1],image_rgb.shape[0]), Image.Resampling.NEAREST)
+        try :
+            image_depth = read_depth("{}/opensfm/undistorted/openmvs/depthmaps/depth{:04d}.dmap".format(path_to_project, ordered_filenames.index('images/{}'.format(img_name))))  # Replace "your_image_path.jpg" with the path to your image file
+            resized_image = image_depth.resize((image_rgb.shape[1],image_rgb.shape[0]), Image.Resampling.NEAREST)
+        except:
+            continue
 
         # generate extrinsic camera metrics 
         rotation = shots[img_name]['rotation']
@@ -320,6 +323,10 @@ def read_camera(path_to_cameras, ply_file_path, output_path, path_to_project, pa
     # Create a voxel grid geometry of the semantic ply
     pcd_final = o3d.geometry.PointCloud()
     pcd_final.points = o3d.utility.Vector3dVector(np.array(downsampled_point_cloud.points))
+    pcd_final.colors = o3d.utility.Vector3dVector(np.array(downsampled_point_cloud.colors))
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd_final, voxel_size=2.5)
+    o3d.io.write_voxel_grid("{}/pointcloud.ply".format(output_path), voxel_grid)  # Change the file format and filename as needed
+
     points_semantics = np.zeros(np.array(downsampled_point_cloud.colors).shape)
 
     # choose the most repeted color for each point of the pointcloud
@@ -327,15 +334,18 @@ def read_camera(path_to_cameras, ply_file_path, output_path, path_to_project, pa
         points_semantics[index] = most_repeated_row(np.asarray(point_cloud_color_list)[:,index,:])
     pcd_final.colors = o3d.utility.Vector3dVector(points_semantics)
 
+
+
     end_time = time.perf_counter()
     program_time = (end_time - start_time)/ len(images)
     print("The number of used images : " , int(len(images)/2))
     print("The program running time : " , program_time)
 
     # voxel representation
-    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd_final, voxel_size=0.2)
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd_final, voxel_size=2.5)
     o3d.io.write_voxel_grid("{}/semantic_segmentation_pointcloud.ply".format(output_path), voxel_grid)  # Change the file format and filename as needed
     o3d.visualization.draw_geometries([voxel_grid])
+
 
 
 

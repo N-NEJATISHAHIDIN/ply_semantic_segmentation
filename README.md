@@ -18,8 +18,9 @@ This project uses two main, first the semanticly segmented image, then the outpu
    - [Path](https://drive.google.com/file/d/1xQtwe3Y7CgeFi2kQhLUNp_GfbGL8OXfu/view?usp=sharing)
    - Semantic segmentations of the RGB images of the neighborhood data.
 
-2. **ODM output**
-   - the ODM output for neighborhood data.
+2. **ODM**
+   - [Images Which You need to run ODM on](https://drive.google.com/file/d/1ySXz1za2T-_SrAXZADY3OAwwJnaqU6vX/view?usp=sharing)
+   - then run ODM on the neighborhood data.
 
 ## Run the semantic segmentation on the pointcloud 
 
