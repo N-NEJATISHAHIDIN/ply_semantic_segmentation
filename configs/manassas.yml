@@ -1,0 +1,21 @@
+hyperparameters:
+  depth_threshold: 1
+  dbscan_eps: 10
+  dbscan_min_points: 5
+  filter_cluster_size: 10
+  voxel_size: 1.5
+
+voting:
+  background_weights: 0.2  # Assuming 1/50 should be represented as 0.02
+  image_filte_rate: 3
+
+visualization:
+  visualize_images: false  # Corrected 'flase' to 'false'
+  visualize_dbscan: false
+
+pathes:
+  path_to_project: '/home/negar/secondssd/opendronemap/datasets/project'
+  path_to_ply_file: '/home/negar/secondssd/opendronemap/datasets/project/odm_filterpoints/point_cloud.ply'
+  path_to_cameras: '/home/negar/secondssd/opendronemap/datasets/project/opensfm/reconstruction.json'
+  # path_to_segmentation: '/home/negar/secondssd/opendronemap/ply_semantic_segmentation/2D_segmentation/results/manassas_with_stfs'
+  path_to_segmentation: '/home/negar/secondssd/opendronemap/datasets/project/segmentations'

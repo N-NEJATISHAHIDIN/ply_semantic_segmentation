@@ -1,5 +1,8 @@
 # Ignore all directories
 /results
 2D_segmentation/mobile_sam.pt
+2D_segmentation/sam_b.pt
+2D_segmentation/sam_l.pt
+2D_segmentation/results
 # Ignore the .gitignore file itself
 .gitignore

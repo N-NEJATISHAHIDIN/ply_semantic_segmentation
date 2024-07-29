@@ -1,29 +1,59 @@
 # python segment_pointcloud_clean.py '/home/negar/secondssd/opendronemap/datasets/project_2/odm_filterpoints/point_cloud.ply' '/home/negar/secondssd/opendronemap/datasets/project_2/opensfm/reconstruction.json' '/home/negar/secondssd/opendronemap/datasets/project/segmentations' '/home/negar/secondssd/opendronemap/datasets/project_2'  ./menasses_2import argparse
-import open3d as o3d
-import pandas as pd
-import sys
+
+import sys, os
+import yaml
 import json
+import time
 import cv2
 import argparse
+
+import pandas as pd
 import numpy as np 
 from tqdm import tqdm
-import matplotlib.pyplot as plt
-import sys, os
-import time
 import struct
-from PIL import Image
 
+import open3d as o3d
+from PIL import Image
+import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
-import matplotlib.pyplot as plt
-import numpy as np
+
+from collections import Counter
+from joblib import Parallel, delayed
+
+def most_repeated_row(filtered_arr, background_weights):
+    # import pdb; pdb.set_trace()
+
+    if len(filtered_arr) == 0:
+        return [0, 0, 0]
+    # import pdb; pdb.set_trace()
+    # Count occurrences of each row
+    unique_rows, counts = np.unique(filtered_arr, axis=0, return_counts=True)
+        # Adjust count if the most repeated row is [200, 200, 200]
+    # print(unique_rows[np.argmax(counts)])
+    if (np.array_equal(unique_rows[np.argmax(counts)],np.array([200/255,200/255,200/255]))):
+        # import pdb; pdb.set_trace()
+        counts[np.argmax(counts)] = counts[np.argmax(counts)] * background_weights
+    
+    
+    # Find the index of the most repeated row
+    max_count_idx = np.argmax(counts)
+    
+    # Get the most repeated row
+    most_common_row = unique_rows[max_count_idx]
+    
+    return most_common_row
+
+def filter_rows(lst):
+    # Convert the list to a NumPy array
+    arr = np.array(lst)
+    
+    # Filter out rows equal to [0, 0, 0]
+    return arr[~np.all(arr == [0, 0, 0], axis=1)]
+
 
 rot_180x = np.array([[1, 0, 0,0], [0, -1, 0,0], [0, 0, -1,0],  [0, 0, 0, 1]])
-def visualize_point_cloud(ply_file_path):
-    # Load the point cloud from the .ply file
-    point_cloud = o3d.io.read_point_cloud(ply_file_path)
-    # Visualize the point cloud
-    o3d.visualization.draw_geometries([point_cloud])
+
 
 
 def generate_intrinsic(camera):
@@ -42,25 +72,6 @@ def generate_intrinsic(camera):
                         [0,   0,   1]])
     return 1, int_matrix
 
-def most_repeated_row(lst):
-    # Convert the list to a NumPy array
-    arr = np.array(lst)
-    
-    # Filter out rows equal to [0, 0, 0]
-    filtered_arr = arr[~np.all(arr == [0, 0, 0], axis=1)]
-    if len(filtered_arr)==0:
-        return [0,0,0]
-    
-    # Count occurrences of each row
-    unique_rows, counts = np.unique(filtered_arr, axis=0, return_counts=True)
-    
-    # Find the index of the most repeated row
-    max_count_idx = np.argmax(counts)
-    
-    # Get the most repeated row
-    most_common_row = unique_rows[max_count_idx]
-    
-    return most_common_row
 
 def rotate_pointcloud(nube, rot):
     nube_aux = []
@@ -222,7 +233,20 @@ def get_depth_values(depth_image, uv_points):
 
 
 
-def read_camera(path_to_cameras, ply_file_path, output_path, path_to_project, path_to_segmentation, visualize = False):
+def generate_semantic_pcd(path_to_cameras, ply_file_path, output_path, path_to_project, path_to_segmentation, config):
+
+
+    # Accessing configuration values
+    depth_threshold = config['hyperparameters']['depth_threshold']
+    dbscan_eps = config['hyperparameters']['dbscan_eps']
+    dbscan_min_points = config['hyperparameters']['dbscan_min_points']
+    filter_cluster_size = config['hyperparameters']['filter_cluster_size']
+    voxel_size_pcd = config['hyperparameters']['voxel_size']
+
+    background_weights = config['voting']['background_weights']
+    image_filte_rate = config['voting']['image_filte_rate']
+    visualize = config['visualization']['visualize_images']
+    visualize_dbscan = config['visualization']['visualize_images']
 
 
     # Path to your .nvm file
@@ -231,9 +255,14 @@ def read_camera(path_to_cameras, ply_file_path, output_path, path_to_project, pa
     ordered_filenames = extract_filenames(nvm_filepath)
 
     point_cloud = o3d.io.read_point_cloud(ply_file_path) 
-    downsampled_point_cloud = point_cloud.voxel_down_sample(voxel_size=1.5)  # Adjust voxel size and downsample the points
+    downsampled_point_cloud = point_cloud.voxel_down_sample(voxel_size=voxel_size_pcd)  # Adjust voxel size and downsample the points
+    pcd_black = o3d.geometry.PointCloud()
+    pcd_black.points = downsampled_point_cloud.points
+    pcd_black.colors = o3d.utility.Vector3dVector(np.zeros(np.asarray(downsampled_point_cloud.points).shape))
+    
     points = np.asarray(downsampled_point_cloud.points)
     o3d.visualization.draw_geometries([downsampled_point_cloud])
+
 
     print("###################### INFO ######################")
     print("Original point-cloud size : ", (np.asarray(point_cloud.points)).shape )
@@ -254,7 +283,7 @@ def read_camera(path_to_cameras, ply_file_path, output_path, path_to_project, pa
     for i,img_name in tqdm(enumerate(sorted(images))):
 
         # reduce number of imagesq
-        if i%3!=1:
+        if i%image_filte_rate!=1:
             continue
 
         # Load the image
@@ -306,15 +335,54 @@ def read_camera(path_to_cameras, ply_file_path, output_path, path_to_project, pa
         all_points_2D_reshaped = all_points_2D[:,0,:]
         depth_computed = compute_depth(int_matrix, rotation_matrix, translation_matrix, np.asarray(downsampled_point_cloud.points), all_points_2D_reshaped)
         depth_gt_values = get_depth_values((np.asarray(resized_image)!=255)*np.asarray(resized_image), all_points_2D_reshaped.astype(int))
-        depth_not_passed_points_idx = np.where((depth_computed -depth_gt_values)>0.8)
+        # import pdb; pdb.set_trace()
+        depth_not_passed_points_idx = np.where((depth_computed - depth_gt_values) > depth_threshold)
         semanticly_colored_points[depth_not_passed_points_idx] = np.array([0,0,0])
+        
+        # get all the semantics projected to pointcloud using this image
+        unique_semantics = np.unique(semanticly_colored_points, axis=0)
+        matching_indexes = [np.where((semanticly_colored_points == unique_semantics[index]).all(axis=1))[0] for index in range(len(unique_semantics))]
+
+        for index in range(1, len(matching_indexes)):
+            point_colord_with_index = np.asarray(downsampled_point_cloud.points)[matching_indexes[index]]
+            if len(point_colord_with_index)<filter_cluster_size:
+                semanticly_colored_points[matching_indexes[index]] = np.array([0,0,0])
+                continue
+        #     pcd_dbscan = o3d.geometry.PointCloud()
+        #     pcd_dbscan.points = o3d.utility.Vector3dVector(point_colord_with_index)
+        #     pcd_dbscan.colors = o3d.utility.Vector3dVector(semanticly_colored_points[matching_indexes[index]])
+
+
+
+        #     # Step 4: Apply DBSCAN
+        #     # Set parameters for DBSCAN
+        #     eps = dbscan_eps  # Radius of neighborhood.
+        #     min_points = dbscan_min_points  # Minimum number of points to form a cluster.
+        #     labels = np.array(pcd_dbscan.cluster_dbscan(eps=eps, min_points=min_points, print_progress=True))
+        #     semanticly_colored_points[matching_indexes[index][labels < 0]] =  np.array([0,0,0])  # Noise points are black
+
+            # if visualize_dbscan:
+            #     # # Step 5: Visualize the results
+            #     max_label = labels.max()
+            #     # print(f"point cloud has {max_label + 1} clusters")
+            #     colors = plt.get_cmap("tab20")(labels / (max_label if max_label > 0 else 1))
+            #     colors[labels < 0] = 0  # Noise points are black
+            #     pcd_dbscan.colors = o3d.utility.Vector3dVector(colors[:, :3])
+            #     import pdb; pdb.set_trace()
+
+            #     # Visualize the point cloud
+            #     o3d.visualization.draw_geometries([pcd_black, pcd_dbscan
+            #                                     ], window_name="DBSCAN Clustering",
+            #                                     width=800, height=600, left=50, top=50,
+            #                                     point_show_normal=False, mesh_show_wireframe=False,
+            #                                     mesh_show_back_face=False)
+        
         point_cloud_color_list.append(semanticly_colored_points)
 
-
+        # visualize RGB, seg, depth images
         if visualize :
             fig = plt.figure(figsize=( 40, 20), dpi=100)
 
-            # visualize RGB, seg, depth images
             ax = fig.add_subplot(1, 3, 1)
             ax.imshow(image_rgb)
 
@@ -331,15 +399,47 @@ def read_camera(path_to_cameras, ply_file_path, output_path, path_to_project, pa
     pcd_final = o3d.geometry.PointCloud()
     pcd_final.points = o3d.utility.Vector3dVector(np.array(downsampled_point_cloud.points))
     pcd_final.colors = o3d.utility.Vector3dVector(np.array(downsampled_point_cloud.colors))
-    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd_final, voxel_size=1.5)
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd_final, voxel_size=voxel_size_pcd)
     o3d.io.write_voxel_grid("{}/pointcloud.ply".format(output_path), voxel_grid)  # Change the file format and filename as needed
 
     points_semantics = np.zeros(np.array(downsampled_point_cloud.colors).shape)
 
-    # choose the most repeted color for each point of the pointcloud
-    for index in tqdm(range(np.array(downsampled_point_cloud.points).shape[0])):
-        points_semantics[index] = most_repeated_row(np.asarray(point_cloud_color_list)[:,index,:])
+    # Convert point_cloud_color_list to a NumPy array once
+    point_cloud_color_array = np.asarray(point_cloud_color_list)
+
+    # Use Parallel processing to speed up the loop
+    num_cores = 6  # You can adjust this based on your system
+    filtered_arrays = [filter_rows(point_cloud_color_array[:, index, :]) for index in range(point_cloud_color_array.shape[1])]
+    # import pdb; pdb.set_trace()
+    points_semantics = Parallel(n_jobs=num_cores)(delayed(most_repeated_row)(filtered_arr, background_weights) for filtered_arr in tqdm(filtered_arrays))
+
+    points_semantics = np.asarray(points_semantics)
+    # get all the semantics projected to pointcloud using this image
+    unique_semantics = np.unique(points_semantics, axis=0)
+    matching_indexes = [np.where((points_semantics == unique_semantics[index]).all(axis=1))[0] for index in range(len(unique_semantics))]
+
+    for index in range(1, len(matching_indexes)):
+        point_colord_with_index = np.asarray(downsampled_point_cloud.points)[matching_indexes[index]]
+        # if len(point_colord_with_index)<filter_cluster_size:
+        #     semanticly_colored_points[matching_indexes[index]] = np.array([0,0,0])
+        #     continue
+        pcd_dbscan = o3d.geometry.PointCloud()
+        pcd_dbscan.points = o3d.utility.Vector3dVector(point_colord_with_index)
+        pcd_dbscan.colors = o3d.utility.Vector3dVector(points_semantics[matching_indexes[index]])
+
+
+
+        # Step 4: Apply DBSCAN
+        # Set parameters for DBSCAN
+        eps = dbscan_eps  # Radius of neighborhood.
+        min_points = dbscan_min_points  # Minimum number of points to form a cluster.
+        labels = np.array(pcd_dbscan.cluster_dbscan(eps=eps, min_points=min_points, print_progress=True))
+        points_semantics[matching_indexes[index][labels < 0]] =  np.array([200/255,200/255,200/255])  # Noise points are black
+
     pcd_final.colors = o3d.utility.Vector3dVector(points_semantics)
+
+
+
 
 
 
@@ -349,7 +449,7 @@ def read_camera(path_to_cameras, ply_file_path, output_path, path_to_project, pa
     print("The program running time : " , program_time)
 
     # voxel representation
-    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd_final, voxel_size=1.5)
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd_final, voxel_size=voxel_size_pcd)
     o3d.io.write_voxel_grid("{}/semantic_segmentation_pointcloud.ply".format(output_path), voxel_grid)  # Change the file format and filename as needed
     o3d.visualization.draw_geometries([voxel_grid])
 
@@ -359,17 +459,29 @@ def read_camera(path_to_cameras, ply_file_path, output_path, path_to_project, pa
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Visualize a 3D point cloud from a .ply file")
-    parser.add_argument("ply_file", type=str, help="Path to the .ply file")
-    parser.add_argument("path_to_cameras", type=str, help="Path to the camera informations file")
-    parser.add_argument("path_to_segmentation", type=str, help="Path to the camera informations file")
-    parser.add_argument("path_to_project", type=str, help="Path to the output folder file")
+    # parser.add_argument("ply_file", type=str, help="Path to the .ply file")
+    # parser.add_argument("path_to_cameras", type=str, help="Path to the camera informations file")
+    # parser.add_argument("path_to_segmentation", type=str, help="Path to the camera informations file")
+    # parser.add_argument("path_to_project", type=str, help="Path to the output folder file")
+    parser.add_argument("path_to_config_file", type=str, help="Path to configuration file")
     parser.add_argument("output_path", type=str, help="Path to the output folder file")
-    # parser.add_argument("visualize", type=bool, default= False)
     args = parser.parse_args()
 
     if not os.path.exists(args.output_path):
         os.makedirs(args.output_path)
 
-    read_camera(args.path_to_cameras, args.ply_file, args.output_path, args.path_to_project, args.path_to_segmentation)#, args.visualize)
+
+    # Load the configuration from YAML file
+    with open(args.path_to_config_file, 'r') as file:
+        config = yaml.safe_load(file)
+        
+
+    # Accessing configuration values
+    path_to_project = config['pathes']['path_to_project']
+    path_to_ply_file = config['pathes']['path_to_ply_file']
+    path_to_cameras = config['pathes']['path_to_cameras']
+    path_to_segmentation = config['pathes']['path_to_segmentation']
+
+    generate_semantic_pcd(path_to_cameras, path_to_ply_file, args.output_path, path_to_project, path_to_segmentation, config)
 
 
