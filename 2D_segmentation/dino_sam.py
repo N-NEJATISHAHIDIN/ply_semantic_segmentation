@@ -12,6 +12,14 @@ import numpy as np
 import torch
 from PIL import Image
 from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
+from utils import read_images_from_path
+from transformers import AutoProcessor
+from transformers import AutoModelForUniversalSegmentation
+
+# processor = AutoProcessor.from_pretrained("shi-labs/oneformer_coco_swin_large")
+# modelee = AutoModelForUniversalSegmentation.from_pretrained("shi-labs/oneformer_coco_swin_large")
+# classes = modelee.config.label2id
+
 
 def generate_k_distinct_colors(k):
     # Ensure k is at most 12 to avoid non-distinct colors
@@ -58,6 +66,8 @@ def run_dino_sam(directory, text, output):
         image = Image.open(image_file)
 
         inputs = processor(images=image, text=text, return_tensors="pt").to(device)
+        # import pdb; pdb.set_trace()
+
         with torch.no_grad():
             outputs = model(**inputs)
 
@@ -79,15 +89,18 @@ def run_dino_sam(directory, text, output):
             try:
                 label_id.append(class_to_id[class_name])
             except:
-                # try:
-                id = np.where([(classe in class_name) for classe in classes])[0][0]
-                # except:
-                #     print(class_name)
+                try:
+                    id = np.where([(classe in class_name) for classe in classes])[0][0]
+                    label_id.append(id)
+
+                except:
+
+                    print(class_name)
 
                     # import pdb; pdb.set_trace()
                 # class_to_id[classes] = len(class_to_id)
                 # label_id.append(class_to_id[class_name])
-                label_id.append(id)
+                    label_id.append(0)
                 # classes.append(class_name)
         # print("label_id: ", label_id)
         # print("classes: ", classes)
@@ -128,14 +141,14 @@ def run_dino_sam(directory, text, output):
         black_image = np.ones((image.shape),dtype = 'uint8')*200
         black_image = cv2.cvtColor(black_image, cv2.COLOR_RGB2BGR)
         mask_annotator = sv.MaskAnnotator()
-        annotated_image = mask_annotator.annotate(scene=black_image.copy(), detections=detections)
-        # annotated_frame = box_annotator.annotate(scene=annotated_image.copy(), detections=detections, labels=labels)
+        annotated_image = mask_annotator.annotate(scene=scene.copy(), detections=detections)
+        annotated_frame = box_annotator.annotate(scene=annotated_image.copy(), detections=detections, labels=labels)
 
         # annotated_frame = box_annotator.annotate(scene=annotated_image.copy(), detections=detections, labels=labels)
 
         # annotated_image = box_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
         # sv.plot_image(annotated_frame, (20, 20))
-        cv2.imwrite(os.path.join(output, os.path.basename(image_file)), annotated_image)
+        cv2.imwrite(os.path.join(output, os.path.basename(image_file)), annotated_frame)
 
 
     #     # generate mask for the ply segmentation generation
@@ -153,25 +166,6 @@ def run_dino_sam(directory, text, output):
 
 
 
-def read_images_from_path(path):
-    """
-    Read all images from the specified path, sorted based on filenames.
-    
-    Args:
-        path (str): The path where the images are located.
-    
-    Returns:
-        List of tuples: (filename, PIL.Image.Image object).
-    """
-    # Initialize an empty list to store image filenames
-    image_files = []
-    # Iterate through all files in the directory
-    for filename in os.listdir(path):
-        # Check if the file is an image (assuming common image file extensions)
-        if filename.lower().endswith(('.png', '.jpg.tif', '.jpg', '.jpeg', '.gif', '.bmp')):
-            # Append the image filename to the list
-            image_files.append(os.path.join(path,filename))
-    return image_files
 
 def main():
     parser = argparse.ArgumentParser(description='Read all images from a specified path.')
@@ -190,8 +184,15 @@ def main():
     # text = "a sedan car. an suv car. a tree. a light. a fan. a box."
     text = "a car. all cars. all roads. all buildings. a tree. a light. all sidewalks. all grass. all construction materials. "
     # text = "a house. a car. a road. a sidewalk. all grass. a tree. "
+    # import pdb; pdb.set_trace()
+    classes = ['airplane', 'banner', 'parking', 'construction' ,'baseball bat', 'baseball glove', 'bench', 'bicycle', 'bird', 
+               'boat', 'bridge', 'building', 'bus', 'car', 'dirt-merged', 'fire hydrant', 'frisbee', 'grass-merged', 'gravel', 
+               'horse', 'house', 'kite', 'motorcycle', 'mountain-merged', 'parking meter', 'pavement', 'person', 'platform', 
+               'playingfield', 'potted plant', 'railroad', 'road', 'rock-merged', 'roof', 'sand', 'sea', 'sheep', 'skateboard', 
+               'skis', 'sky-other-merged', 'snow', 'snowboard', 'sports ball', 'stop sign', 'surfboard', 'tent', 'traffic light', 
+               'train', 'tree-merged', 'truck', 'water-other', 'tree', 'grass', 'jungle']
 
-    run_dino_sam(path, text, output_path)
+    run_dino_sam(path, ". ".join(classes)+". ", output_path)
     # images = read_images_from_path(path)
     # print(f"Found {len(images)} images in {path}.")
 

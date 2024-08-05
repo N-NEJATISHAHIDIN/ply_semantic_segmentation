@@ -1,5 +1,8 @@
 # Ignore all directories
 /results
+2D_segmentation/sam_vit_l_0b3195.pth
+2D_segmentation/sam_vit_h_4b8939.pth
+2D_segmentation/sam_vit_b_01ec64.pth
 2D_segmentation/mobile_sam.pt
 2D_segmentation/sam_b.pt
 2D_segmentation/sam_l.pt
